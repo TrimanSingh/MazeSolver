@@ -26,6 +26,9 @@ This project implements an autonomous maze-solving robot using the floodfill alg
 - Appropriate voltage for motors and Arduino
 - Ensure adequate current capacity for all motors
 
+## Bot
+![MazeSolver Bot](MazeSolver.jpg)
+
 ## File Structure
 
 ### MazeSolver.ino
