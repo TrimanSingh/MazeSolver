@@ -1,3 +1,5 @@
+// #include <Arduino.h>
+#include "FloodFill.h"
 
 // Power for US sensor
 int trigFront=A1;
@@ -6,9 +8,6 @@ int trigLeft=A2;
 int echoLeft=A3;
 int trigRight=A4;
 int echoRight=A5;
-
-//power pins
-
 
 float leftduration, leftdistance;
 float frontduration, frontdistance; 
@@ -99,6 +98,9 @@ public:
   }
 };
 
+// Create FloodFill object
+FloodFill mazeSolver;
+
 Ultrasonic front_US;
 Ultrasonic left_US;
 Ultrasonic right_US;
@@ -119,9 +121,28 @@ void setup() {
   RR_MOTOR.init(enD, in7, in8);
 
   Serial.begin(9600);
+  
+  // Initialize floodfill algorithm
+  mazeSolver.initialize();
+  mazeSolver.setWallThreshold(15); // Set wall detection threshold to 15cm
+  
+  Serial.println("Maze Solver with Floodfill Algorithm Started");
+  Serial.print("Target: (");
+  Serial.print(mazeSolver.getTargetX());
+  Serial.print(", ");
+  Serial.print(mazeSolver.getTargetY());
+  Serial.println(")");
 }
 
 void loop() {
+  // Print current position and sensor readings
+  Serial.print("Position: (");
+  Serial.print(mazeSolver.getRobotX());
+  Serial.print(", ");
+  Serial.print(mazeSolver.getRobotY());
+  Serial.print(") Direction: ");
+  Serial.println(mazeSolver.getRobotDirection());
+  
   Serial.print("Front: ");
   Serial.println(front_US.getDistance());
   Serial.print("Left: ");
@@ -129,29 +150,46 @@ void loop() {
   Serial.print("Right: ");
   Serial.println(right_US.getDistance());
   
-
-
-
-  if (front_US.getDistance() < 20){
-    if (left_US.getDistance() > 20){
-      // moveLeft();
-      // moveLeft();
-      // moveLeft();
-      // moveLeft();
-      // moveLeft();
-      // moveLeft();
-
-      for (int i =0; i<15;i++) moveLeft();
+  // Check if we've reached the target
+  if (mazeSolver.hasReachedTarget()) {
+    Serial.println("TARGET REACHED!");
+    stopALL();
+    while(1) {
+      // Stay here - maze solved!
+      delay(1000);
     }
-    else if (left_US.getDistance() < 20 && right_US.getDistance() < 20){
-      Uturn(5);
-    }
-
-    
-  } else {
-    moveForward();
   }
   
+  // Update wall information based on sensor readings
+  mazeSolver.updateWalls(front_US.getDistance(), left_US.getDistance(), right_US.getDistance());
+  
+  // Recalculate flood values
+  mazeSolver.calculateFloodValues();
+  
+  // Get the optimal direction to move
+  int optimalDir = mazeSolver.getOptimalDirection();
+  
+  if (optimalDir == -1) {
+    // No accessible direction - this shouldn't happen in a solvable maze
+    Serial.println("ERROR: No accessible direction!");
+    stopALL();
+    delay(1000);
+    return;
+  }
+  
+  // Turn to the optimal direction
+  turnToDirection(optimalDir);
+  
+  // Move forward one cell
+  moveForwardOneCell(optimalDir);
+  
+  Serial.print("Moved to direction: ");
+  Serial.println(optimalDir);
+  Serial.print("Flood value: ");
+  Serial.println(mazeSolver.getFloodValue(mazeSolver.getRobotX(), mazeSolver.getRobotY()));
+  Serial.println("---");
+  
+  delay(500); // Small delay between moves
 }
 
 void moveForward() {
@@ -159,7 +197,6 @@ void moveForward() {
   FR_MOTOR.setSpeed(85,  -1);
   RL_MOTOR.setSpeed(255, -1);
   RR_MOTOR.setSpeed(85, -1);
-  Serial.println("forward");
 }
 
 void moveLeft() {
@@ -170,17 +207,10 @@ void moveLeft() {
 }
 
 void moveRight() {
-  FL_MOTOR.setSpeed(85, 1);
-  FR_MOTOR.setSpeed(255, -1);
-  RL_MOTOR.setSpeed(85, 1);
-  RR_MOTOR.setSpeed(255, -1);
-}
-
-void Uturn(int Utime) {
-  float start=millis();
-  while ((millis() - start) < Utime*1000){
-    moveRight();
-  }
+  FL_MOTOR.setSpeed(255, -1);
+  FR_MOTOR.setSpeed(255, 1);
+  RL_MOTOR.setSpeed(255, -1);
+  RR_MOTOR.setSpeed(255, 1);
 }
 
 void stopALL() {
@@ -189,12 +219,46 @@ void stopALL() {
   RL_MOTOR.stop();
   RR_MOTOR.stop();
 }
-void setup() {
-  // put your setup code here, to run once:
 
+void turnToDirection(int targetDirection) {
+  while (mazeSolver.getRobotDirection() != targetDirection) {
+    int diff = (targetDirection - mazeSolver.getRobotDirection() + 4) % 4;
+    if (diff == 1) {
+      // Turn right
+      turnRight90();
+    } else {
+      // Turn left (for diff == 3, 2)
+      turnLeft90();
+    }
+    delay(500); // Give time for turn to complete
+  }
 }
 
-void loop() {
-  // put your main code here, to run repeatedly:
-
+void turnRight90() {
+  unsigned long startTime = millis();
+  while (millis() - startTime < 500) { // Adjust timing as needed
+    moveRight();
+  }
+  stopALL();
 }
+
+void turnLeft90() {
+  unsigned long startTime = millis();
+  while (millis() - startTime < 500) { // Adjust timing as needed
+    moveLeft();
+  }
+  stopALL();
+}
+
+void moveForwardOneCell(int direction) {
+  // Move forward one cell and update robot position
+  unsigned long startTime = millis();
+  while (millis() - startTime < 1000) { // Adjust timing based on cell size
+    moveForward();
+  }
+  stopALL();
+  
+  // Update robot position in the maze solver
+  mazeSolver.updateRobotPosition(direction);
+}
+
